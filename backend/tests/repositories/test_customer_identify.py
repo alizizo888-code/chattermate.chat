@@ -99,6 +99,62 @@ class TestIdentify:
 
         assert mine.id != theirs.id
 
+    def test_survives_another_caller_creating_the_same_person_first(
+        self, repo, db, test_organization
+    ):
+        """Two dashboard tabs opening the chat at once both read "no such
+        customer" and both insert; the unique constraint fails one of them."""
+        winner = repo.create_customer(
+            email="race@example.com", organization_id=test_organization.id
+        )
+
+        real_lookup = repo.get_customer_by_email
+        calls = {"n": 0}
+
+        def lookup_blind_once(email, organization_id):
+            # First read happens before the other caller commits, so it sees nothing.
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return None
+            return real_lookup(email, organization_id)
+
+        repo.get_customer_by_email = lookup_blind_once
+
+        customer = repo.identify(
+            email="race@example.com",
+            organization_id=test_organization.id,
+            full_name="Raced In",
+        )
+
+        assert customer.id == winner.id
+        assert customer.is_authenticated is True
+        assert customer.full_name == "Raced In"
+
+    def test_does_not_rewrite_meta_data_that_has_not_changed(self, repo, test_organization):
+        """The token endpoint calls this on every request; restoring what is
+        already stored should not cost a write."""
+        meta = {"dashboard_organization_id": "org-1"}
+        repo.identify(
+            email="steady@example.com", organization_id=test_organization.id, meta_data=meta
+        )
+
+        writes = []
+        real_update = repo.update_meta_data
+        repo.update_meta_data = lambda cid, m: (writes.append(m), real_update(cid, m))[1]
+
+        repo.identify(
+            email="steady@example.com", organization_id=test_organization.id, meta_data=meta
+        )
+        assert writes == []
+
+        # ...but a changed value still lands
+        repo.identify(
+            email="steady@example.com",
+            organization_id=test_organization.id,
+            meta_data={"dashboard_organization_id": "org-2"},
+        )
+        assert writes == [{"dashboard_organization_id": "org-2"}]
+
     def test_refuses_a_blank_email(self, repo, test_organization):
         with pytest.raises(ValueError):
             repo.identify(email="   ", organization_id=test_organization.id)
