@@ -670,6 +670,28 @@ Keep your responses concise and focused. Provide clear, actionable information i
                     "domain, or just a name), do NOT accept it, do NOT set lead_email, and do NOT claim you "
                     "recorded it — politely point out it looks incomplete and ask again for a full email address."
                 )
+                # The visitor may already be known - they passed the email gate, or the
+                # embedding app identified them with a token. Without this the agent asks
+                # them to type an address we are already storing and then tells them
+                # "Email: Not provided", which is the same "we have this already" wart
+                # the ticket instructions below avoid.
+                known_lead_bits = []
+                if self.known_customer_email:
+                    known_lead_bits.append(
+                        f'their email is "{self.known_customer_email}" - put exactly that in lead_email'
+                    )
+                if self.known_customer_name:
+                    known_lead_bits.append(
+                        f'their name is "{self.known_customer_name}" - put exactly that in lead_name'
+                    )
+                if known_lead_bits:
+                    lc_prompt += (
+                        " ALREADY KNOWN: " + "; ".join(known_lead_bits) + "."
+                        " Do NOT ask for these and do NOT ask the visitor to confirm or repeat them - you"
+                        " already have them, so count them as collected when deciding whether you can record"
+                        " the lead. If the visitor volunteers a different value, use theirs instead."
+                    )
+
                 # The record trigger is: a valid email + every REQUIRED field + consent.
                 # Required fields (beyond email) genuinely gate recording; optional ones
                 # never do. Build the trigger text from the required fields so marking a
