@@ -190,6 +190,7 @@
   --z-fullscreen-page: 1050; /* mobile chat-info "Details" page */
   --z-prompt: 1090;          /* push/install prompts */
   --z-sheet: 1100;           /* More bottom sheet */
+  --z-support-chat: 1150;    /* hosted support chat drawer (read from JS) */
   --z-modal: 2000;
 
   /* Breakpoints — keep in sync with useBreakpoint.ts (JS can't read these

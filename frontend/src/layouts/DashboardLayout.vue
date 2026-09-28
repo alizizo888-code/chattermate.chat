@@ -88,6 +88,8 @@ const { hasEnterpriseModule, subscriptionStore, initializeSubscriptionStore, sho
 const PromoSurfaces = enterpriseComponent(moduleImports.promoSurfaces)
 // Always-on offer pill in the header: survives the strip being dismissed
 const PromoHeaderPill = enterpriseComponent(moduleImports.promoHeaderPill)
+// Help button opening the hosted support chat (empty in OSS)
+const SupportChatButton = enterpriseComponent(moduleImports.supportChatButton)
 
 const currentPlan = computed(() => subscriptionStore.value.currentPlan)
 const isLoadingPlan = computed(() => subscriptionStore.value.isLoadingPlan)
@@ -295,6 +297,7 @@ const openNotificationsFromSheet = () => {
                         <button class="icon-btn" @click="toggleTheme" :title="themeTitle" :aria-label="themeTitle"
                             v-html="navIconSvg(themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sun' : 'monitor', 17)">
                         </button>
+                        <SupportChatButton v-if="hasEnterpriseModule" />
                         <PromoHeaderPill v-if="hasEnterpriseModule" />
                         <div v-if="hasEnterpriseModule && (isLoadingPlan || isInTrial)" class="plan-display">
                             <div v-if="isLoadingPlan" class="plan-loading">

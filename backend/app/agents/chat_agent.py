@@ -602,8 +602,18 @@ Keep your responses concise and focused. Provide clear, actionable information i
                 To transfer to a human, set transfer_to_human to true in your response and provide a transfer_reason and transfer_description.
                 """
             else:
+                # Scoped to THIS conversation on purpose. Stated as a flat
+                # "transfer is disabled", the model reads it as a fact about the
+                # business and answers "we cannot hand chats to a human" — which
+                # for an agent whose subject is its own product turns a setting
+                # on one agent into a false claim about what the product does.
                 system_message += """
-                Transfer to human is disabled for this agent. You should not transfer the conversation to a human.
+                You cannot hand this conversation to a human agent — that is switched off for this chat.
+                Do not offer it, and do not set transfer_to_human. This is a setting on you, not a fact
+                about the business or its product: never tell the customer that the business has no human
+                support or that the product cannot transfer chats. If they ask to speak to a person, say
+                you cannot put them through from here, then help them yourself or open a ticket. If they
+                ask what the product can do, answer from the knowledge base, not from this setting.
                 """
 
             # Add lead-capture instructions (enabled = a toggle, like transfer_to_human).
