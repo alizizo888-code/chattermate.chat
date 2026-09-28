@@ -98,6 +98,8 @@ const moduleImports = {
   promoUsageCard: '/src/modules/enterprise/components/promo/PromoUsageCard.vue',
   promoGateNotice: '/src/modules/enterprise/components/promo/PromoGateNotice.vue',
   promoLimitToast: '/src/modules/enterprise/components/promo/PromoLimitToast.vue',
+  // Help button for the hosted support chat (renders nothing in open source)
+  supportChatButton: '/src/modules/enterprise/components/support/SupportChatButton.vue',
 }
 
 /** Renders nothing: the open-source stand-in for an enterprise-only surface. */
