@@ -112,6 +112,60 @@ class CustomerRepository:
             self.db.rollback()
             raise
 
+    def identify(
+        self,
+        email: str,
+        organization_id: UUID,
+        full_name: str = None,
+        meta_data: dict = None
+    ) -> Customer:
+        """Find or create the customer an embedding app has just named, and record
+        that the identity came from a system that already knew who they were.
+
+        `is_authenticated` is what separates these people from leads the agent
+        captured: they are the business's own signed-in users, so the People and
+        lead views filter them out. It is set on creation and backfilled on an
+        existing row, because the same person may first have arrived anonymously.
+
+        A supplied name replaces a stale one, and supplied meta_data is merged
+        (existing keys not named in this call are kept).
+        """
+        email = (email or "").strip()
+        if not email:
+            raise ValueError("identify() needs an email")
+        try:
+            customer = self.get_customer_by_email(email, organization_id)
+            if not customer:
+                customer = Customer(
+                    email=email,
+                    full_name=full_name,
+                    meta_data=meta_data,
+                    is_authenticated=True,
+                    organization_id=organization_id,
+                )
+                self.db.add(customer)
+                self.db.commit()
+                self.db.refresh(customer)
+                logger.info(f"Identified new customer {customer.id} ({email})")
+                return customer
+
+            changed = False
+            if not customer.is_authenticated:
+                customer.is_authenticated = True
+                changed = True
+            if full_name and customer.full_name != full_name:
+                customer.full_name = full_name
+                changed = True
+            if changed:
+                self.db.commit()
+            if meta_data:
+                customer = self.update_meta_data(customer.id, meta_data) or customer
+            return customer
+        except Exception as e:
+            logger.error(f"Error identifying customer: {str(e)}")
+            self.db.rollback()
+            raise
+
     def update_meta_data(
         self,
         customer_id: UUID,

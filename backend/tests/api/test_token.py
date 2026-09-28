@@ -820,8 +820,8 @@ class TestTokenCustomData:
     def test_generate_token_existing_customer_merges_custom_data(
         self, mock_db, mock_widget_app, mock_widget, mock_customer, valid_api_key
     ):
-        """custom_data for a returning customer is merged into their stored meta_data
-        (not just embedded in the JWT), so it shows up in the agent inbox."""
+        """custom_data for a returning customer reaches the stored meta_data (not just
+        the JWT), so it shows up in the agent inbox."""
         def override_get_db():
             yield mock_db
 
@@ -849,7 +849,7 @@ class TestTokenCustomData:
             MockRepo.return_value = mock_repo
 
             mock_customer_repo = MagicMock()
-            mock_customer_repo.update_meta_data.return_value = mock_customer
+            mock_customer_repo.identify.return_value = mock_customer
             MockCustomerRepo.return_value = mock_customer_repo
 
             mock_db.commit = MagicMock()
@@ -868,9 +868,13 @@ class TestTokenCustomData:
             )
 
             assert response.status_code == 201
-            # The merge happens on the existing customer, not the create path
-            mock_customer_repo.update_meta_data.assert_called_once_with(
-                mock_customer.id, custom_data
+            # The route hands the identity to the shared upsert; the merge itself
+            # is the repository's job (see TestIdentify).
+            mock_customer_repo.identify.assert_called_once_with(
+                email=mock_customer.email,
+                organization_id=mock_widget.organization_id,
+                full_name=None,
+                meta_data=custom_data,
             )
 
         app.dependency_overrides.clear()
