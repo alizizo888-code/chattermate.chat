@@ -220,42 +220,16 @@ async def generate_widget_token(
         customer = None
         
         if body.customer_email:
-            # Get or create customer by email
-            customer = db.query(Customer).filter(
-                Customer.email == body.customer_email,
-                Customer.organization_id == widget.organization_id
-            ).first()
-            
-            if not customer:
-                # Create new customer with email. The embedding app supplied a known
-                # identity, so this is an authenticated/integration customer (excluded
-                # from the People/leads views), not an organic lead.
-                customer = Customer(
-                    email=body.customer_email,
-                    full_name=body.customer_name,
-                    meta_data=body.custom_data,
-                    is_authenticated=True,
-                    organization_id=widget.organization_id
-                )
-                db.add(customer)
-                db.commit()
-                db.refresh(customer)
-                logger.info(f"Created new customer: {customer.id} with email {body.customer_email}")
-            else:
-                # An existing customer identified via the authenticated integration flow.
-                if not customer.is_authenticated:
-                    customer.is_authenticated = True
-                    db.commit()
-                # Update existing customer with new name if provided
-                if body.customer_name and customer.full_name != body.customer_name:
-                    customer.full_name = body.customer_name
-                    db.commit()
-                    logger.info(f"Updated customer {customer.id} name to {body.customer_name}")
-                # Merge in any new/changed custom_data (e.g. student_name, center_name)
-                # so agents see the latest values in the inbox; existing keys not
-                # present in this call are preserved.
-                if body.custom_data:
-                    customer = CustomerRepository(db).update_meta_data(customer.id, body.custom_data) or customer
+            # The embedding app supplied a known identity, so this is an
+            # authenticated/integration customer (excluded from the People/leads
+            # views), not an organic lead. Shared with the hosted support chat,
+            # which identifies the signed-in dashboard user the same way.
+            customer = CustomerRepository(db).identify(
+                email=body.customer_email,
+                organization_id=widget.organization_id,
+                full_name=body.customer_name,
+                meta_data=body.custom_data,
+            )
         else:
             # No email provided - create anonymous customer
             # Generate a unique email for anonymous customers

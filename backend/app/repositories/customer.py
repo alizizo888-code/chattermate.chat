@@ -112,6 +112,86 @@ class CustomerRepository:
             self.db.rollback()
             raise
 
+    def identify(
+        self,
+        email: str,
+        organization_id: UUID,
+        full_name: str = None,
+        meta_data: dict = None
+    ) -> Customer:
+        """Find or create the customer an embedding app has just named, and record
+        that the identity came from a system that already knew who they were.
+
+        `is_authenticated` is what separates these people from leads the agent
+        captured: they are the business's own signed-in users, so the People and
+        lead views filter them out. It is set on creation and backfilled on an
+        existing row, because the same person may first have arrived anonymously.
+
+        A supplied name replaces a stale one, and supplied meta_data is merged
+        (existing keys not named in this call are kept).
+        """
+        email = (email or "").strip()
+        if not email:
+            raise ValueError("identify() needs an email")
+        try:
+            customer = self.get_customer_by_email(email, organization_id)
+            if not customer:
+                customer = self._create_identified(email, organization_id, full_name, meta_data)
+                if customer is not None:
+                    return customer
+                # Someone else created them between our read and our insert —
+                # two dashboard tabs opening the chat at once is enough. Their
+                # row is the one that exists now, so carry on updating it.
+                customer = self.get_customer_by_email(email, organization_id)
+                if customer is None:
+                    raise RuntimeError(f"Customer {email} vanished after a create conflict")
+
+            changed = False
+            if not customer.is_authenticated:
+                customer.is_authenticated = True
+                changed = True
+            if full_name and customer.full_name != full_name:
+                customer.full_name = full_name
+                changed = True
+            if changed:
+                self.db.commit()
+            # Only when it would actually change something: this runs on every
+            # token request, and an unconditional merge writes a row per request
+            # to store what is already there.
+            if meta_data and {**(customer.meta_data or {}), **meta_data} != (customer.meta_data or {}):
+                customer = self.update_meta_data(customer.id, meta_data) or customer
+            return customer
+        except Exception as e:
+            logger.error(f"Error identifying customer: {str(e)}")
+            self.db.rollback()
+            raise
+
+    def _create_identified(
+        self,
+        email: str,
+        organization_id: UUID,
+        full_name: str = None,
+        meta_data: dict = None
+    ) -> Customer | None:
+        """Insert the customer, or None when the (email, organization_id) unique
+        constraint says a concurrent caller got there first."""
+        customer = Customer(
+            email=email,
+            full_name=full_name,
+            meta_data=meta_data,
+            is_authenticated=True,
+            organization_id=organization_id,
+        )
+        self.db.add(customer)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            return None
+        self.db.refresh(customer)
+        logger.info(f"Identified new customer {customer.id} ({email})")
+        return customer
+
     def update_meta_data(
         self,
         customer_id: UUID,
