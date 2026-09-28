@@ -268,6 +268,57 @@ class EnhancedWebsiteReader(WebsiteReader):
         logger.debug(f"URL '{url}' is missing protocol, adding 'https://'")
         return f"https://{url}"
 
+    @staticmethod
+    def _host_resolves(host: str) -> bool:
+        """Whether a hostname has an address. False for any failure to find one.
+
+        Strict on purpose: the two callers want opposite defaults from a lookup
+        that errors oddly (a malformed IDN host, say), and treating "could not
+        tell" as success would let the apex check pass a host it never verified.
+        Failing closed means an unverifiable pair is simply left alone.
+        """
+        try:
+            socket.getaddrinfo(host, None)
+            return True
+        except Exception:
+            return False
+
+    def _seed_with_resolvable_host(self, url: str) -> str:
+        """Swap a dead ``www`` seed for its apex when only the apex resolves.
+
+        utsabzone.store serves its site on the apex but has a broken CNAME on
+        ``www``, so a customer who pasted the ``www`` address was told the domain
+        does not resolve — true of the name they gave us, useless as advice, and
+        the site was up the whole time.
+
+        Only the seed is rewritten. CrawlScope already treats ``www.x`` and ``x``
+        as one host, so the crawl stays inside the same boundary, and the fetch
+        still runs the SSRF guard on whichever host we end up asking for.
+        """
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if not host.startswith("www."):
+            return url
+
+        # Only pay for a lookup once we know there is an alternative to try.
+        if self._host_resolves(host):
+            return url
+
+        apex = host[4:]
+        if not apex or not self._host_resolves(apex):
+            return url
+
+        netloc = parsed.netloc
+        if "@" in netloc or not netloc.lower().startswith(host):
+            # Credentials or an unexpected shape: do not rewrite it.
+            return url
+
+        swapped = parsed._replace(netloc=apex + netloc[len(host):]).geturl()
+        logger.warning(
+            f"{host} has no address; crawling {apex} instead (the apex resolves)"
+        )
+        return swapped
+
     def _canonical_url(self, url: str) -> str:
         """Canonicalize a URL so variants of the same page collapse to one id.
 
@@ -1047,6 +1098,8 @@ class EnhancedWebsiteReader(WebsiteReader):
         """
         # Normalize URL to ensure it has a protocol
         url = self._normalize_url(url)
+        # A www host with no address of its own falls back to the apex.
+        url = self._seed_with_resolvable_host(url)
         
         # Reset visited and urls_to_crawl for fresh crawl
         self._visited = set()

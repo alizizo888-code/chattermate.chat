@@ -45,6 +45,9 @@ class SitemapReader(EnhancedWebsiteReader):
         on_url_crawled_callback: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, str]:
         url = self._normalize_url(url)
+        # Same www/apex fallback as a website crawl - a sitemap URL on a broken
+        # www host is the identical customer problem.
+        url = self._seed_with_resolvable_host(url)
 
         # Reset per-crawl state exactly as the base crawl does — the counters are
         # read by the progress logs and by _raise_if_nothing_stored (a fully
