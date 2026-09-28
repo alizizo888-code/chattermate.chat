@@ -578,3 +578,105 @@ class TestUnreachableHostsFailFast(unittest.TestCase):
         cause, _, browser = reader._classify_transport_error(refused)
         self.assertEqual(cause, FailureCause.CONNECTION)
         self.assertTrue(browser)
+
+
+class TestWwwApexFallback(unittest.TestCase):
+    """A ``www`` host with no address falls back to the apex.
+
+    Production job 392: a customer pasted https://www.utsabzone.store, whose
+    ``www`` CNAME is broken while the apex serves the site fine. They were told
+    "the domain does not resolve" — accurate about the name they gave us, and
+    useless, because the site was up.
+    """
+
+    def setUp(self):
+        self.reader = EnhancedWebsiteReader(max_depth=1, max_links=1)
+
+    def _resolver(self, resolvable):
+        """getaddrinfo that only knows about `resolvable` hosts."""
+        def fake(host, *args, **kwargs):
+            if host in resolvable:
+                return [(2, 1, 6, "", ("93.184.216.34", 0))]
+            raise socket.gaierror(8, "nodename nor servname provided, or not known")
+        return fake
+
+    def test_a_dead_www_seed_falls_back_to_the_apex(self):
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=self._resolver({"utsabzone.store"})):
+            out = self.reader._seed_with_resolvable_host("https://www.utsabzone.store")
+        self.assertEqual(out, "https://utsabzone.store")
+
+    def test_a_working_www_seed_is_left_alone(self):
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=self._resolver({"www.example.com", "example.com"})):
+            out = self.reader._seed_with_resolvable_host("https://www.example.com/pricing")
+        self.assertEqual(out, "https://www.example.com/pricing")
+
+    def test_a_non_www_seed_costs_no_lookup(self):
+        """The common case must not pay for DNS it does not need."""
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo') as gai:
+            out = self.reader._seed_with_resolvable_host("https://example.com")
+        self.assertEqual(out, "https://example.com")
+        gai.assert_not_called()
+
+    def test_both_hosts_dead_keeps_the_url_the_user_gave(self):
+        """So the error still names what they typed."""
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=self._resolver(set())):
+            out = self.reader._seed_with_resolvable_host("https://www.jourico.com")
+        self.assertEqual(out, "https://www.jourico.com")
+
+    def test_the_path_query_and_port_survive_the_swap(self):
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=self._resolver({"shop.example"})):
+            out = self.reader._seed_with_resolvable_host(
+                "https://www.shop.example:8443/catalogue?page=2")
+        self.assertEqual(out, "https://shop.example:8443/catalogue?page=2")
+
+    def test_credentials_in_the_url_are_never_rewritten(self):
+        url = "https://user:pass@www.example.com/"
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=self._resolver({"example.com"})):
+            self.assertEqual(self.reader._seed_with_resolvable_host(url), url)
+
+    def test_an_unverifiable_apex_is_never_swapped_in(self):
+        """A lookup that errors oddly must not count as "the apex is fine".
+
+        Otherwise we would rewrite the seed to a host we never confirmed and
+        report the failure against the wrong name.
+        """
+        def odd(host, *args, **kwargs):
+            if host.startswith("www."):
+                raise socket.gaierror(8, "not known")
+            raise UnicodeError("malformed host")
+
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo', side_effect=odd):
+            out = self.reader._seed_with_resolvable_host("https://www.example.com")
+        self.assertEqual(out, "https://www.example.com")
+
+    def test_the_swapped_apex_is_still_checked_by_the_ssrf_guard(self):
+        """The fallback derives a host the user never typed, so prove it is guarded.
+
+        A dead ``www`` whose apex points at loopback is the vector: without the
+        per-hop check in safe_get, the rewrite would reach an internal address.
+        """
+        from app.knowledge.url_safety import BlockedHostError, guard_url
+
+        def internal_apex(host, *args, **kwargs):
+            if host == "attacker.test":
+                return [(2, 1, 6, "", ("127.0.0.1", 0))]
+            raise socket.gaierror(8, "nodename nor servname provided")
+
+        with patch('app.knowledge.enhanced_website_reader.socket.getaddrinfo',
+                   side_effect=internal_apex):
+            swapped = self.reader._seed_with_resolvable_host("https://www.attacker.test")
+        self.assertEqual(swapped, "https://attacker.test")
+
+        with patch('app.knowledge.url_safety.socket.getaddrinfo', side_effect=internal_apex):
+            with self.assertRaises(BlockedHostError):
+                guard_url(swapped)
+
+    def test_the_swapped_apex_stays_inside_the_crawl_scope(self):
+        """Otherwise the fallback would fetch one page and refuse every link."""
+        scope = CrawlScope.for_seed("https://www.utsabzone.store", DEFAULT_CRAWL_SCOPE)
+        self.assertTrue(scope.allows("https://utsabzone.store/products"))
