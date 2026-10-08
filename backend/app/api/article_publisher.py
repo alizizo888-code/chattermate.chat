@@ -38,6 +38,7 @@ class CampaignCreate(BaseModel):
     content_mode: str = Field(default="fresh", pattern="^(fresh|rewrite|reuse)$")
     publish_status: str = Field(default="draft", pattern="^(draft|pending|publish)$")
     language: str = "ar"
+    article_style: str = Field(default="standard", pattern="^(standard|how_to|service|comparison|faq|listicle)$")
     brand_instructions: Optional[str] = None
 
 class CampaignUpdate(BaseModel):
@@ -56,6 +57,7 @@ class CampaignUpdate(BaseModel):
     content_mode: Optional[str] = Field(default=None, pattern="^(fresh|rewrite|reuse)$")
     publish_status: Optional[str] = Field(default=None, pattern="^(draft|pending|publish)$")
     language: Optional[str] = None
+    article_style: Optional[str] = Field(default=None, pattern="^(standard|how_to|service|comparison|faq|listicle)$")
     brand_instructions: Optional[str] = None
 
 @router.get("/sites")
