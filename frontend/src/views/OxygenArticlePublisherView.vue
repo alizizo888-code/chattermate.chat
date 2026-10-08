@@ -15,7 +15,7 @@ const campaignForm = ref({
   schedule_start_hour: 8, schedule_end_hour: 22, timezone: 'Asia/Riyadh',
   target_mode: 'fixed', target_page_id: null as number | null, post_type: 'page',
   category_ids: [] as number[], topics: [] as string[], keywords: [] as string[],
-  content_mode: 'fresh', publish_status: 'draft', language: 'ar', brand_instructions: '',
+  content_mode: 'fresh', publish_status: 'draft', language: 'ar', article_style: 'standard', brand_instructions: '',
 })
 const topicText = ref('')
 const keywordText = ref('')
@@ -105,6 +105,7 @@ onMounted(load)
             <select v-if="campaignForm.target_mode === 'fixed'" v-model="campaignForm.target_page_id" class="rounded border p-2">
               <option :value="null">اختر الصفحة</option><option v-for="t in targets" :key="t.id" :value="t.id">{{ t.title }} (#{{ t.id }})</option>
             </select>
+            <select v-model="campaignForm.article_style" class="rounded border p-2"><option value="standard">تصميم قياسي</option><option value="how_to">دليل خطوة بخطوة</option><option value="service">مقال خدمة</option><option value="comparison">مقارنة</option><option value="faq">أسئلة شائعة</option><option value="listicle">قائمة/نصائح</option></select>
             <select v-model="campaignForm.content_mode" class="rounded border p-2"><option value="fresh">توليف جديد بالكامل</option><option value="rewrite">إعادة صياغة وتوليف من مقال سابق</option><option value="reuse">إعادة استخدام المحتوى السابق كما هو</option></select>
             <select v-model="campaignForm.publish_status" class="rounded border p-2"><option value="draft">Draft — للمراجعة</option><option value="pending">Pending</option><option value="publish">Publish مباشرة</option></select>
             <textarea v-model="topicText" class="min-h-20 rounded border p-2" placeholder="موضوع لكل سطر"></textarea>
