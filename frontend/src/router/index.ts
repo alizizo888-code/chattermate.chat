@@ -85,6 +85,12 @@ const baseRoutes = [
     },
   },
   {
+    path: '/oxygen-articles',
+    name: 'oxygen-articles',
+    component: () => import('@/views/OxygenArticlePublisherView.vue'),
+    meta: { requiresAuth: true, layout: 'dashboard', title: 'Oxygen 11 Articles' },
+  },
+  {
     path: '/faq',
     name: 'faq',
     component: () => import('@/views/FaqView.vue'),
