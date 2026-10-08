@@ -45,6 +45,7 @@ export const ROUTE_PERMISSIONS: Record<string, readonly string[]> = {
   // calls requires manage_knowledge, so a view_knowledge role would get the
   // link and a page that 403s on its first request.
   '/faq': ['manage_knowledge'],
+  '/oxygen-articles': ['manage_knowledge'],
   '/tickets': TICKET_PERMISSIONS,
   '/tickets/:id': TICKET_PERMISSIONS,
   '/settings/ticketing': ['manage_organization'],
