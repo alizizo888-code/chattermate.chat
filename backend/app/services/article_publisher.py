@@ -347,7 +347,7 @@ def _choose_target(db: Session, organization_id, campaign: dict, site_id: int) -
     if not targets:
         return None, campaign.get("post_type") or "post"
     # Stable pseudo-random rotation based on current day and campaign id.
-    index = (datetime.now(timezone.utc).timetuple().tm_yday + int(campaign["id"])) % len(targets)
+    now = datetime.now(timezone.utc)\n    minute_seed = now.timetuple().tm_yday * 1440 + now.hour * 60 + now.minute\n    index = (minute_seed + int(campaign["id"])) % len(targets)
     return targets[index]["id"], campaign.get("post_type") or "post"
 
 def publish_to_wordpress(db: Session, organization_id, campaign: dict, article: GeneratedArticle, target_id: Optional[int], target_type: str) -> dict:
