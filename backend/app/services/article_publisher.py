@@ -98,6 +98,7 @@ def ensure_schema(db: Session) -> None:
             content_mode VARCHAR(30) NOT NULL DEFAULT 'fresh',
             publish_status VARCHAR(20) NOT NULL DEFAULT 'draft',
             language VARCHAR(20) NOT NULL DEFAULT 'ar',
+            article_style VARCHAR(30) NOT NULL DEFAULT 'standard',
             brand_instructions TEXT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -256,6 +257,8 @@ CAMPAIGN TARGET MODE: {campaign.get("target_mode")}
 CONTENT MODE: {campaign.get("content_mode")}
 RULE: {reuse_rule}
 
+ARTICLE STYLE: {campaign.get("article_style") or "standard"}
+
 BRAND/EDITORIAL INSTRUCTIONS:
 {campaign.get("brand_instructions") or "Write useful, accurate, natural Arabic. Avoid keyword stuffing."}
 
@@ -404,7 +407,7 @@ def create_campaign(db: Session, organization_id, payload: dict) -> dict:
         (organization_id,site_id,name,enabled,daily_count,schedule_start_hour,schedule_end_hour,
          timezone,target_mode,target_page_id,post_type,category_ids,topics,keywords,content_mode,publish_status,language,brand_instructions)
         VALUES (:org,:site,:name,:enabled,:count,:start,:end,:tz,:target_mode,:target_id,:post_type,
-                CAST(:categories AS jsonb),CAST(:topics AS jsonb),CAST(:keywords AS jsonb),:content_mode,:publish_status,:language,:instructions)
+                CAST(:categories AS jsonb),CAST(:topics AS jsonb),CAST(:keywords AS jsonb),:content_mode,:publish_status,:language,:article_style,:instructions)
         RETURNING *"""),
         {"org": organization_id, "site": payload["site_id"], "name": payload["name"],
          "enabled": bool(payload.get("enabled", False)), "count": count,
@@ -413,7 +416,7 @@ def create_campaign(db: Session, organization_id, payload: dict) -> dict:
          "tz": payload.get("timezone") or "UTC", "target_mode": payload.get("target_mode") or "fixed",
          "target_id": payload.get("target_page_id"), "post_type": payload.get("post_type") or "post",
          "categories": _json(payload.get("category_ids")), "topics": _json(payload.get("topics")),
-         "keywords": _json(payload.get("keywords")), "content_mode": payload.get("content_mode") or "fresh",
+         "keywords": _json(payload.get("keywords")), "content_mode": payload.get("content_mode") or "fresh", "article_style": payload.get("article_style") or "standard",
          "publish_status": payload.get("publish_status") or "draft", "language": payload.get("language") or "ar",
          "instructions": payload.get("brand_instructions")})
     db.commit()
@@ -430,7 +433,7 @@ def update_campaign(db: Session, organization_id, campaign_id: int, payload: dic
     ensure_schema(db)
     allowed = {"name","enabled","daily_count","schedule_start_hour","schedule_end_hour","timezone",
                "target_mode","target_page_id","post_type","category_ids","topics","keywords",
-               "content_mode","publish_status","language","brand_instructions"}
+               "content_mode","publish_status","language","article_style","brand_instructions"}
     fields = {k:v for k,v in payload.items() if k in allowed}
     if "daily_count" in fields:
         fields["daily_count"] = max(1, min(MAX_DAILY_ARTICLES, int(fields["daily_count"])))
