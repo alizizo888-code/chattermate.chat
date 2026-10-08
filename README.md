@@ -628,6 +628,6 @@ Contributions are accepted under Apache-2.0 with a [Developer Certificate of Ori
 
 The Oxygen 11 module adds an AI editorial scheduler on top of ChatterMate. It supports 1–30 articles/day, with the default 15 articles distributed from 08:00 through 22:00 (15 hourly slots). Campaigns can target one WordPress parent page, rotate across WordPress targets, generate fresh content, rewrite a previous article, or explicitly reuse an existing generated article. The UI is available at `/oxygen-articles` for users with `manage_knowledge`.
 
-WordPress publishing uses the WordPress REST API and an Application Password stored encrypted in the ChatterMate database. WordPress exposes posts at `/wp/v2/posts` and pages at `/wp/v2/pages`; pages support a `parent` ID, which is how the fixed-page mode groups generated child pages. citeturn2search0turn0search1turn0search3
+WordPress publishing uses the WordPress REST API and an Application Password stored encrypted in the ChatterMate database. WordPress exposes posts at `/wp/v2/posts` and pages at `/wp/v2/pages`; pages support a `parent` ID, which is how the fixed-page mode groups generated child pages.
 
 The scheduler runs as a dedicated `article_publisher` worker in Docker and checks due slots every 60 seconds. Publishing defaults to Draft until the campaign is explicitly switched to Publish.
