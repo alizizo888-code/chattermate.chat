@@ -117,6 +117,28 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  article_publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m app.workers.article_publisher
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OXYGEN_ARTICLE_SCHEDULER_INTERVAL=60
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - app-network
+
   ticket_investigator:
     image: chattermate/backend:latest
     command: python -m app.workers.ticket_investigator
