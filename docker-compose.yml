@@ -112,6 +112,33 @@ services:
     networks:
       - app-network
 
+  article_publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m app.workers.article_publisher
+    env_file:
+      - ./backend/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OXYGEN_ARTICLE_SCHEDULER_INTERVAL=60
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
   ticket_investigator:
     build:
       context: .
