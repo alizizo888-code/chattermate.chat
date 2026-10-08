@@ -384,7 +384,7 @@ def create_site(db: Session, organization_id, payload: dict) -> dict:
                 (organization_id,name,base_url,username,encrypted_app_password,verify_ssl,active)
                 VALUES (:org,:name,:url,:user,:pass,:verify,true)
                 RETURNING id,name,base_url,username,verify_ssl,active"""),
-        {"org": organization_id, "name": payload["name"], "url": payload["base_url"].rstrip("/"),
+        {"org": organization_id, "name": payload["name"], "url": str(payload["base_url"]).rstrip("/"),
          "user": payload["username"], "pass": encrypted, "verify": bool(payload.get("verify_ssl", True))},
     ).mappings().first()
     db.commit()
@@ -473,9 +473,22 @@ async def run_campaign_once(db: Session, organization_id, campaign_id: int, forc
         return {"status":"disabled"}
     target_id,target_type=_choose_target(db,organization_id,campaign,campaign["site_id"])
     source=_select_source(db,campaign_id,campaign.get("content_mode") or "fresh")
-    article=await generate_article(db,organization_id,campaign,source)
-    result=publish_to_wordpress(db,organization_id,campaign,article,target_id,target_type)
     exact_reuse=(campaign.get("content_mode")=="reuse" and source is not None)
+    if exact_reuse:
+        article=GeneratedArticle(
+            title=source.get("title") or "Oxygen 11 Article",
+            slug=source.get("slug") or "oxygen11-article",
+            excerpt="",
+            content_markdown=source.get("content_markdown") or "",
+            primary_keyword=source.get("primary_keyword") or "",
+            secondary_keywords=source.get("secondary_keywords") or [],
+            meta_title=source.get("meta_title") or source.get("title") or "",
+            meta_description=source.get("meta_description") or "",
+            tags=[],
+        )
+    else:
+        article=await generate_article(db,organization_id,campaign,source)
+    result=publish_to_wordpress(db,organization_id,campaign,article,target_id,target_type)
     status="reused" if exact_reuse else "published"
     db.execute(text("""INSERT INTO oxygen_article_items
       (organization_id,campaign_id,site_id,scheduled_for,generated_at,published_at,status,target_id,target_type,
