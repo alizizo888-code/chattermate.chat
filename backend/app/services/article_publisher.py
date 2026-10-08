@@ -130,6 +130,7 @@ def ensure_schema(db: Session) -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )""",
+        "ALTER TABLE oxygen_article_campaigns ADD COLUMN IF NOT EXISTS article_style VARCHAR(30) NOT NULL DEFAULT 'standard'",
         "CREATE INDEX IF NOT EXISTS idx_oxygen_article_campaign_due ON oxygen_article_items(campaign_id, scheduled_for, status)",
         "CREATE INDEX IF NOT EXISTS idx_oxygen_article_org_created ON oxygen_article_items(organization_id, created_at DESC)",
     ]
@@ -405,7 +406,7 @@ def create_campaign(db: Session, organization_id, payload: dict) -> dict:
     count = max(1, min(MAX_DAILY_ARTICLES, int(payload.get("daily_count", DEFAULT_DAILY_ARTICLES))))
     row = db.execute(text("""INSERT INTO oxygen_article_campaigns
         (organization_id,site_id,name,enabled,daily_count,schedule_start_hour,schedule_end_hour,
-         timezone,target_mode,target_page_id,post_type,category_ids,topics,keywords,content_mode,publish_status,language,brand_instructions)
+         timezone,target_mode,target_page_id,post_type,category_ids,topics,keywords,content_mode,publish_status,language,article_style,brand_instructions)
         VALUES (:org,:site,:name,:enabled,:count,:start,:end,:tz,:target_mode,:target_id,:post_type,
                 CAST(:categories AS jsonb),CAST(:topics AS jsonb),CAST(:keywords AS jsonb),:content_mode,:publish_status,:language,:article_style,:instructions)
         RETURNING *"""),
