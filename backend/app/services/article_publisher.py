@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timedelta, timezone, time as dt_time
 from typing import Any, Optional
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 import httpx
 import markdown
@@ -23,7 +24,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.agents.faq_generator import _GENERATE_INSTRUCTIONS  # noqa: F401
-from app.core.encryption import decrypt_value, encrypt_value
 from app.core.logger import get_logger
 from app.core.security import decrypt_api_key, encrypt_api_key
 from app.models.ai_config import AIConfig
@@ -184,20 +184,20 @@ def _client(site: dict, password: str) -> httpx.Client:
 def list_wp_targets(db: Session, organization_id, site_id: int, target_type: str) -> list[dict]:
     site, password = _site_auth(db, site_id, organization_id)
     endpoint = "pages" if target_type == "page" else "posts"
-    params = {"per_page": 100, "orderby": "modified", "order": "desc", "_fields": "id,title,link,slug,parent"}
+    targets: list[dict] = []
     with _client(site, password) as client:
-        response = client.get(endpoint, params=params)
-        response.raise_for_status()
-        return [
-            {
-                "id": x["id"],
-                "title": (x.get("title") or {}).get("rendered", ""),
-                "link": x.get("link"),
-                "slug": x.get("slug"),
-                "parent": x.get("parent"),
-            }
-            for x in response.json()
-        ]
+        for page in range(1, 11):
+            response = client.get(endpoint, params={"per_page": 100, "page": page, "orderby": "modified", "order": "desc", "_fields": "id,title,link,slug,parent"})
+            if response.status_code == 400 and page > 1:
+                break
+            response.raise_for_status()
+            batch = response.json()
+            if not batch:
+                break
+            targets.extend({"id": x["id"], "title": (x.get("title") or {}).get("rendered", ""), "link": x.get("link"), "slug": x.get("slug"), "parent": x.get("parent")} for x in batch)
+            if len(batch) < 100:
+                break
+    return targets
 
 def list_wp_categories(db: Session, organization_id, site_id: int) -> list[dict]:
     site, password = _site_auth(db, site_id, organization_id)
@@ -319,7 +319,12 @@ def schedule_today(campaign: dict, now: datetime) -> list[datetime]:
     count = max(1, min(MAX_DAILY_ARTICLES, int(campaign.get("daily_count") or DEFAULT_DAILY_ARTICLES)))
     start_hour = max(0, min(23, int(campaign.get("schedule_start_hour") or DEFAULT_START_HOUR)))
     end_hour = max(0, min(23, int(campaign.get("schedule_end_hour") if campaign.get("schedule_end_hour") is not None else DEFAULT_END_HOUR)))
-    return _scheduled_slots(now.date(), count, start_hour, end_hour, now.tzinfo)
+    try:
+        tzinfo = ZoneInfo(campaign.get("timezone") or "UTC")
+    except Exception:
+        tzinfo = timezone.utc
+    local_now = now.astimezone(tzinfo)
+    return _scheduled_slots(local_now.date(), count, start_hour, end_hour, tzinfo)
 
 def _select_source(db: Session, campaign_id: int, mode: str) -> Optional[dict]:
     row = db.execute(
@@ -364,9 +369,6 @@ def publish_to_wordpress(db: Session, organization_id, campaign: dict, article: 
         category_ids = [int(x) for x in (campaign.get("category_ids") or []) if str(x).isdigit()]
         if category_ids:
             payload["categories"] = category_ids
-        tags = [t for t in article.tags if t]
-        if tags:
-            payload["tags"] = tags
 
     with _client(site, password) as client:
         response = client.post(endpoint, json=payload)
@@ -504,11 +506,16 @@ async def scheduler_tick() -> int:
             # Slots are computed in UTC unless the campaign timezone is supplied;
             # the stored timezone is retained for UI and can be wired to zoneinfo.
             slots=schedule_today(campaign,now)
-            existing={r[0] for r in db.execute(text("""SELECT scheduled_for FROM oxygen_article_items
-                WHERE campaign_id=:cid AND scheduled_for >= :start AND scheduled_for < :end"""),
-                {"cid":campaign["id"],"start":datetime.combine(now.date(),dt_time.min,tzinfo=timezone.utc),
-                 "end":datetime.combine(now.date()+timedelta(days=1),dt_time.min,tzinfo=timezone.utc)}).all()}
-            due=[s for s in slots if s <= now and s.replace(second=0,microsecond=0) not in {x.replace(second=0,microsecond=0) for x in existing}]
+            try:
+                campaign_tz=ZoneInfo(campaign.get("timezone") or "UTC")
+            except Exception:
+                campaign_tz=timezone.utc
+            local_now=now.astimezone(campaign_tz)
+            day_start=datetime.combine(local_now.date(),dt_time.min,tzinfo=campaign_tz)
+            day_end=day_start+timedelta(days=1)
+            existing={r[0] for r in db.execute(text("""SELECT scheduled_for FROM oxygen_article_items WHERE campaign_id=:cid AND scheduled_for >= :start AND scheduled_for < :end"""), {"cid":campaign["id"],"start":day_start,"end":day_end}).all()}
+            existing_minutes={x.astimezone(campaign_tz).replace(second=0,microsecond=0) for x in existing if x}
+            due=[s for s in slots if s <= local_now and s.replace(second=0,microsecond=0) not in existing_minutes]
             if due:
                 await run_campaign_once(db,campaign["organization_id"],campaign["id"])
                 created+=1
