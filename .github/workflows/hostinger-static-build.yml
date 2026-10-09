@@ -1,0 +1,89 @@
+name: Build Hostinger Frontend Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/hostinger-static-build.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production frontend
+        run: npm run build:prod
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_WS_URL: ${{ vars.VITE_WS_URL }}
+          VITE_WIDGET_URL: ${{ vars.VITE_WIDGET_URL }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
+          VITE_GOOGLE_FONTS_API_KEY: ${{ vars.VITE_GOOGLE_FONTS_API_KEY }}
+          VITE_SHOPIFY_API_KEY: ${{ vars.VITE_SHOPIFY_API_KEY }}
+
+      - name: Add Apache SPA fallback
+        working-directory: .
+        run: |
+          test -f frontend/dist/index.html
+          cat > frontend/dist/.htaccess <<'EOF'
+          Options -Indexes
+          DirectoryIndex index.html
+          <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteCond %{REQUEST_FILENAME} -f [OR]
+            RewriteCond %{REQUEST_FILENAME} -d
+            RewriteRule ^ - [L]
+            RewriteRule ^ index.html [L]
+          </IfModule>
+          EOF
+
+      - name: Verify deployment entry files
+        working-directory: .
+        run: |
+          test -s frontend/dist/index.html
+          test -s frontend/dist/config.js
+          test -s frontend/dist/.htaccess
+          echo "Hostinger package files verified:"
+          ls -la frontend/dist | head -40
+
+      - name: Package for Hostinger public_html
+        run: |
+          cd frontend/dist
+          zip -r ../../hostinger-frontend.zip .
+          cd ../..
+
+      - name: Upload deployable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hostinger-frontend
+          path: hostinger-frontend.zip
+          if-no-files-found: error
+          retention-days: 14
