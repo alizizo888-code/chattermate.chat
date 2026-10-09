@@ -54,7 +54,6 @@ jobs:
         run: |
           test -f frontend/dist/index.html
           cat > frontend/dist/.htaccess <<'EOF'
-          Options -Indexes
           DirectoryIndex index.html
           <IfModule mod_rewrite.c>
             RewriteEngine On
@@ -75,10 +74,10 @@ jobs:
           ls -la frontend/dist | head -40
 
       - name: Package for Hostinger public_html
+        working-directory: .
         run: |
           cd frontend/dist
           zip -r ../../hostinger-frontend.zip .
-          cd ../..
 
       - name: Upload deployable package
         uses: actions/upload-artifact@v4
